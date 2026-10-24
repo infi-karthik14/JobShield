@@ -45,6 +45,9 @@ export default function CommunityBoard() {
     }
     return new Set<string>();
   });
+  // BUG-10 fix: track total (unfiltered) report count separately from filtered results
+  const [totalReports, setTotalReports] = useState(0);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -67,6 +70,11 @@ export default function CommunityBoard() {
       const res = await fetch(`/api/community-reports?${params}`);
       const data = await res.json();
       setReports(data.reports);
+
+      // BUG-10 fix: fetch unfiltered total when no filters are active
+      if (!search && category === "all" && verdict === "all") {
+        setTotalReports(data.total ?? data.reports.length);
+      }
     } catch {
       console.error("Failed to fetch reports");
     } finally {
@@ -100,6 +108,7 @@ export default function CommunityBoard() {
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch("/api/community-reports", {
         method: "POST",
@@ -109,19 +118,25 @@ export default function CommunityBoard() {
           tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
         }),
       });
-      if (res.ok) {
-        setSubmitSuccess(true);
-        setFormData({
-          title: "", description: "", location: "",
-          category: "BPO / Call Centre", contactInfo: "",
-          verdict: "High Risk / Likely Scam", tags: "",
-        });
-        setTimeout(() => {
-          setShowReportForm(false);
-          setSubmitSuccess(false);
-          fetchReports();
-        }, 2000);
+      // BUG-05 fix: check res.ok and display server error to the user
+      if (!res.ok) {
+        const err = await res.json();
+        setSubmitError(err.error || "Failed to submit report. Please try again.");
+        return;
       }
+      setSubmitSuccess(true);
+      setFormData({
+        title: "", description: "", location: "",
+        category: "BPO / Call Centre", contactInfo: "",
+        verdict: "High Risk / Likely Scam", tags: "",
+      });
+      setTimeout(() => {
+        setShowReportForm(false);
+        setSubmitSuccess(false);
+        fetchReports();
+      }, 2000);
+    } catch {
+      setSubmitError("Network error. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -184,7 +199,7 @@ export default function CommunityBoard() {
         className="stats-grid"
       >
         {[
-          { label: "Total Reports", value: reports.length, color: "#818cf8", emoji: "📊" },
+          { label: "Total Reports", value: totalReports, color: "#818cf8", emoji: "📊" },
           {
             label: "High Risk Scams",
             value: reports.filter((r) => r.verdict === "High Risk / Likely Scam").length,
@@ -627,40 +642,51 @@ export default function CommunityBoard() {
                   />
                 </div>
 
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={submitting}
-                  style={{
-                    marginTop: "0.5rem",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.5rem",
-                    padding: "0.875rem",
-                  }}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                      Submitting...
-                    </>
-                  ) : (
-                    "Submit Report"
-                  )}
-                </button>
+            {/* BUG-05 fix: show submit error message inside form */}
+            {submitError && (
+              <div
+                style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: 8,
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  color: "#ef4444",
+                  fontSize: "0.875rem",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                {submitError}
+              </div>
+            )}
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={submitting}
+              style={{
+                marginTop: "0.5rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                padding: "0.875rem",
+              }}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Report"
+              )}
+            </button>
               </form>
             )}
           </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @media (max-width: 480px) {
-          .stats-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
+      {/* BUG-02 fix: @keyframes spin lives in globals.css — removed duplicate inline style */}
     </div>
   );
 }

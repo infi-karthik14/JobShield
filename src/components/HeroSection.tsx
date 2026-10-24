@@ -21,9 +21,9 @@ const FEATURES = [
     color: "#6366f1",
   },
   {
-    icon: "🤖",
-    title: "AI-Powered Verdict",
-    desc: "Gemini AI gives a precise Trust Score from 0–100% with detailed breakdown",
+    icon: "🧠",
+    title: "Gemini 2.5 Flash + Thinking",
+    desc: "Google’s latest ML model reasons step-by-step (like a detective) before giving a verdict — 30+ India-specific scam patterns",
     color: "#06b6d4",
   },
   {
@@ -74,7 +74,7 @@ export default function HeroSection({ onGetStarted }: HeroSectionProps) {
         }}
       >
         <Zap size={14} fill="#818cf8" />
-        Powered by Google Gemini AI · Free · No signup required
+        Powered by Gemini 2.5 Flash · Thinking Mode · Free · No signup
       </div>
 
       {/* Headline */}

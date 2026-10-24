@@ -6,19 +6,21 @@ import HeroSection from "@/components/HeroSection";
 import InputPanel from "@/components/InputPanel";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import CommunityBoard from "@/components/CommunityBoard";
+import HowItWorks from "@/components/HowItWorks";
 import { VerificationResult } from "@/types";
 
-type Page = "verify" | "community";
+type Page = "verify" | "community" | "howitworks";
 
 export default function Home() {
   const [activePage, setActivePage] = useState<Page>("verify");
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showHero, setShowHero] = useState(true);
+
+  // BUG-08 fix: showHero is derived — no need for separate state
+  const showHero = !result && !isLoading;
 
   const handleResult = (r: VerificationResult) => {
     setResult(r);
-    setShowHero(false);
     // Scroll to results
     setTimeout(() => {
       document.getElementById("results-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -27,12 +29,10 @@ export default function Home() {
 
   const handleReset = () => {
     setResult(null);
-    setShowHero(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleGetStarted = () => {
-    setShowHero(false);
     setTimeout(() => {
       document.getElementById("verify-section")?.scrollIntoView({ behavior: "smooth" });
     }, 100);
@@ -83,8 +83,8 @@ export default function Home() {
                 </button>
               )}
 
-              {/* Input Panel — always visible unless result is shown */}
-              {!result && (
+              {/* Input Panel — hidden when result is shown or loading (BUG-01 fix) */}
+              {!result && !isLoading && (
                 <InputPanel
                   onResult={handleResult}
                   isLoading={isLoading}
@@ -138,15 +138,16 @@ export default function Home() {
                     </div>
                   </div>
                   <p style={{ fontSize: "1.125rem", fontWeight: 700, color: "#f0f4ff", marginBottom: "0.5rem" }}>
-                    Analysing with AI...
+                    Analysing with Gemini 2.5 Flash
                   </p>
                   <p style={{ fontSize: "0.875rem", color: "#9aa5c4" }}>
-                    Scanning for red flags, checking employer legitimacy, calculating trust score
+                    Advanced ML with Thinking mode — scanning for 30+ Indian scam patterns
                   </p>
 
                   {/* Animated analysis steps */}
                   <div style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem", textAlign: "left", maxWidth: 320, margin: "1.5rem auto 0" }}>
                     {[
+                      "🧠 Gemini 2.5 Flash thinking...",
                       "🔍 Extracting keywords and patterns...",
                       "📧 Checking email domain legitimacy...",
                       "💰 Scanning for fee-related red flags...",
@@ -200,6 +201,13 @@ export default function Home() {
             <CommunityBoard />
           </div>
         )}
+
+        {/* How It Works — shown when judges/users click the tab */}
+        {activePage === "howitworks" && (
+          <div style={{ paddingTop: "1rem" }}>
+            <HowItWorks />
+          </div>
+        )}
       </main>
 
       {/* Footer */}
@@ -249,9 +257,7 @@ export default function Home() {
         </div>
       </footer>
 
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
+      {/* BUG-02 fix: @keyframes spin moved to globals.css — no inline style needed */}
     </div>
   );
 }

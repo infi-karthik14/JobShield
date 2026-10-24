@@ -4,8 +4,8 @@ import { Shield, Menu, X, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
 interface NavbarProps {
-  activePage: "verify" | "community";
-  onPageChange: (page: "verify" | "community") => void;
+  activePage: "verify" | "community" | "howitworks";
+  onPageChange: (page: "verify" | "community" | "howitworks") => void;
 }
 
 export default function Navbar({ activePage, onPageChange }: NavbarProps) {
@@ -36,7 +36,7 @@ export default function Navbar({ activePage, onPageChange }: NavbarProps) {
       >
         {/* Logo */}
         <button
-          onClick={() => onPageChange("verify")}
+          onClick={() => { onPageChange("verify"); setMobileOpen(false); }}
           style={{
             display: "flex",
             alignItems: "center",
@@ -100,6 +100,12 @@ export default function Navbar({ activePage, onPageChange }: NavbarProps) {
             onClick={() => onPageChange("community")}
           >
             🚨 Scam Board
+          </button>
+          <button
+            className={`nav-link tab-btn ${activePage === "howitworks" ? "active" : ""}`}
+            onClick={() => onPageChange("howitworks")}
+          >
+            🧠 How It Works
           </button>
 
           <div
@@ -179,6 +185,13 @@ export default function Navbar({ activePage, onPageChange }: NavbarProps) {
             style={{ textAlign: "left", width: "100%" }}
           >
             🚨 Community Scam Board
+          </button>
+          <button
+            className={`tab-btn ${activePage === "howitworks" ? "active" : ""}`}
+            onClick={() => { onPageChange("howitworks"); setMobileOpen(false); }}
+            style={{ textAlign: "left", width: "100%" }}
+          >
+            🧠 How It Works
           </button>
           <a
             href="https://cybercrime.gov.in"

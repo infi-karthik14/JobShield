@@ -226,12 +226,20 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               } catch {
-                // fallback
+                // BUG-09 fix: use textarea selection fallback (execCommand is deprecated)
+                // This is the safest cross-browser approach for non-secure contexts
                 const ta = document.createElement("textarea");
                 ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
                 document.body.appendChild(ta);
+                ta.focus();
                 ta.select();
-                document.execCommand("copy");
+                try {
+                  document.execCommand("copy");
+                } catch {
+                  // Last resort: do nothing silently
+                }
                 document.body.removeChild(ta);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
@@ -333,7 +341,8 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
                   ANALYSED INPUT PREVIEW
                 </p>
                 <p style={{ fontSize: "0.8125rem", color: "#9aa5c4", lineHeight: 1.5 }}>
-                  {result.inputPreview}{result.inputPreview.length === 120 ? "..." : ""}
+                  {/* BUG-07 fix: use >= 120 instead of === 120 to correctly detect truncation */}
+                 {result.inputPreview}{result.inputPreview.length >= 120 ? "..." : ""}
                 </p>
               </div>
             )}
@@ -341,6 +350,23 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
             {analysedAt && (
               <p style={{ fontSize: "0.75rem", color: "#5c6b8a" }}>
                 Analysed at {new Date(analysedAt).toLocaleString("en-IN")} · {result.inputType?.toUpperCase()} input
+                {" "}·{" "}
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                    padding: "0.1rem 0.5rem",
+                    borderRadius: 99,
+                    background: "rgba(99, 102, 241, 0.12)",
+                    border: "1px solid rgba(99, 102, 241, 0.25)",
+                    color: "#818cf8",
+                    fontWeight: 600,
+                    fontSize: "0.7rem",
+                  }}
+                >
+                  🧠 Gemini 2.5 Flash · Thinking
+                </span>
               </p>
             )}
           </div>

@@ -5,13 +5,24 @@ import { CommunityReport } from "@/types";
 // In-memory store for new reports submitted during the session
 const sessionReports: CommunityReport[] = [];
 
+// BUG-03 fix: track upvote overrides for mock reports separately
+// so we never mutate the shared MOCK_REPORTS module-level import
+const mockUpvoteOverrides = new Map<string, number>();
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const category = searchParams.get("category");
   const verdict = searchParams.get("verdict");
   const search = searchParams.get("search")?.toLowerCase();
 
-  let reports = [...sessionReports, ...MOCK_REPORTS];
+  // BUG-03 fix: apply upvote overrides to mock reports before merging
+  const mockReportsWithOverrides = MOCK_REPORTS.map((r) =>
+    mockUpvoteOverrides.has(r.id)
+      ? { ...r, upvotes: mockUpvoteOverrides.get(r.id)! }
+      : r
+  );
+
+  let reports = [...sessionReports, ...mockReportsWithOverrides];
 
   if (category && category !== "all") {
     reports = reports.filter((r) => r.category.toLowerCase().includes(category.toLowerCase()));
@@ -76,16 +87,25 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const { id } = body;
 
-    const report =
-      sessionReports.find((r) => r.id === id) || MOCK_REPORTS.find((r) => r.id === id);
-
-    if (!report) {
-      return NextResponse.json({ error: "Report not found." }, { status: 404 });
+    // Check session reports first (mutable)
+    const sessionReport = sessionReports.find((r) => r.id === id);
+    if (sessionReport) {
+      sessionReport.upvotes += 1;
+      return NextResponse.json({ success: true, upvotes: sessionReport.upvotes });
     }
 
-    report.upvotes += 1;
-    return NextResponse.json({ success: true, upvotes: report.upvotes });
+    // BUG-03 fix: for mock reports, use the override map instead of mutating MOCK_REPORTS
+    const mockReport = MOCK_REPORTS.find((r) => r.id === id);
+    if (mockReport) {
+      const current = mockUpvoteOverrides.get(id) ?? mockReport.upvotes;
+      const next = current + 1;
+      mockUpvoteOverrides.set(id, next);
+      return NextResponse.json({ success: true, upvotes: next });
+    }
+
+    return NextResponse.json({ error: "Report not found." }, { status: 404 });
   } catch (error) {
+    console.error("Community reports PATCH error:", error);
     return NextResponse.json({ error: "Failed to upvote." }, { status: 500 });
   }
 }

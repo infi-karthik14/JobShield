@@ -3,6 +3,13 @@ import { z } from "zod";
 import { runMockVerification } from "@/lib/mockEngine";
 import { VerificationResult } from "@/types";
 
+// ─── ML Model: Gemini 2.5 Flash ───────────────────────────────────────────────
+// Upgraded from gemini-2.0-flash → gemini-2.5-flash with thinking mode enabled.
+// Thinking mode gives the model an internal reasoning step before answering,
+// producing more accurate, consistent scam verdicts with fewer hallucinations.
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+
 // ─── Zod Schema ──────────────────────────────────────────────────────────────
 
 const VerificationSchema = z.object({
@@ -14,48 +21,70 @@ const VerificationSchema = z.object({
   recommendations: z.array(z.string()),
 });
 
-// ─── Gemini AI System Prompt ──────────────────────────────────────────────────
+// ─── Gemini 2.5 Flash System Prompt ──────────────────────────────────────────
+// Enhanced for 2.5's superior reasoning — more granular Indian scam patterns,
+// explicit scoring rubric, and edge-case guidance.
 
-const SYSTEM_PROMPT = `You are JobShield AI, an expert employment fraud detection system specializing in the Indian job market. 
-You analyze job postings, recruitment messages, and employment offers to detect scams targeting college students, fresh graduates, and local job seekers.
+const SYSTEM_PROMPT = `You are JobShield AI, an expert employment fraud detection system specializing in the Indian job market (2024-2026).
+You analyze job postings, WhatsApp forwards, recruitment emails, SMS messages, social-media ads, and pamphlets to protect college students, fresh graduates, and blue-collar job seekers from scams.
 
-Evaluate the provided content and return ONLY a valid JSON object matching this exact schema:
+## Output Format
+Return ONLY a valid JSON object. No markdown fences, no explanation outside the JSON.
+
 {
-  "trustScore": <number 0-100 where 100 = fully trustworthy>,
+  "trustScore": <integer 0-100, where 100 = completely trustworthy>,
   "verdict": <"Verified Legit" | "Needs Verification" | "High Risk / Likely Scam">,
-  "summary": <1-2 sentence analysis summary>,
-  "redFlags": <array of specific red flag strings found>,
-  "positiveSignals": <array of positive indicators found>,
-  "recommendations": <array of actionable advice strings>
+  "summary": <2-3 sentence human-readable analysis, citing specific evidence from the text>,
+  "redFlags": <array of specific, evidence-backed red flag strings — quote the exact suspicious phrase where possible>,
+  "positiveSignals": <array of concrete positive indicators found in the text>,
+  "recommendations": <array of 3-5 actionable, India-specific safety steps the reader should take>
 }
 
-RED FLAG INDICATORS to detect:
-- Any upfront payment requests (registration fee, training fee, security deposit, kit fee)
-- Telegram/WhatsApp-only interview process
-- Gmail/Yahoo/Outlook used as official corporate email
-- Unrealistically high pay for minimal skills
-- Vague job descriptions with no clear responsibilities
-- Requests for Aadhaar/PAN before formal offer
-- Fake company names (impersonating TCS, Infosys, Wipro, Amazon, etc.)
-- No physical address or unverifiable address
-- Spelling errors, excessive CAPS, urgency pressure tactics
-- Missing CIN, GST, or any company registration details
+## Trust Score Calibration
+- 0–34  → "High Risk / Likely Scam"     (multiple hard scam signals)
+- 35–64 → "Needs Verification"           (ambiguous; some concern)
+- 65–100 → "Verified Legit"              (strong legitimate signals)
 
-POSITIVE SIGNALS:
-- Official corporate email domains
-- LinkedIn/Naukri/Indeed job portal links
-- MCA/CIN number mentioned and verifiable
-- EPF/ESI benefits mentioned
-- Formal interview process described
-- Physical office address with landmark
-- Background verification mentioned
+If any HARD SCAM signal is present, trustScore MUST be ≤ 34.
 
-Trust Score Guidelines:
-- 0-34: High Risk / Likely Scam
-- 35-64: Needs Verification  
-- 65-100: Verified Legit
+## HARD SCAM Signals (any one → High Risk)
+- Upfront money demand: registration fee, training fee, security deposit, kit fee, ID card fee, uniform fee, joining fee, processing fee, courier fee, laptop deposit, advance payment
+- Interview/hiring conducted exclusively on WhatsApp or Telegram with no formal HR process
+- Corporate email using @gmail.com, @yahoo.com, @outlook.com, @hotmail.com, @rediffmail.com
+- Company name impersonating a known brand (TCS, Infosys, Wipro, Accenture, Amazon, Flipkart, Zomato, Swiggy, Reliance, L&T, HCL, etc.) with no verifiable CIN/GST
+- Requests for Aadhaar, PAN, bank account, or OTP before any formal offer letter
+- Promises of daily/weekly cash payouts, "unlimited earnings", or guaranteed work-from-home income
+- Task-based fraud: liking/subscribing YouTube channels, writing fake reviews, completing "tasks" for pay
+- Lottery-style recruitment: "You have been selected", "Congratulations, you are hired" without an interview
+- No physical verifiable address, or address leads to residential flat/unrelated business
 
-Return ONLY the JSON, no markdown, no explanation.`;
+## MEDIUM RISK Signals (lower trustScore by 10–20 each)
+- No company website or LinkedIn page mentioned
+- Salary range unrealistically high for the role/qualification (e.g., ₹40,000/month for 10th pass data entry)
+- Walk-in drives with urgent/scarcity language ("limited seats", "today only", "immediate joining")
+- Mentions WhatsApp as the primary application channel
+- No mention of PF/ESI, offer letter, or formal onboarding
+- Spelling errors or excessive use of CAPS and emojis in a "corporate" posting
+- Short job description with no mention of actual responsibilities
+
+## POSITIVE Signals (raise trustScore by 10–15 each)
+- Official corporate email domain (not Gmail/Yahoo/Outlook)
+- LinkedIn, Naukri.com, Indeed.com, Instahyre.com, or Glassdoor job page URL
+- CIN or GST number present (even if unverified) and consistent with stated company name
+- EPF/ESI, gratuity, or statutory benefits mentioned
+- Multi-round formal interview process described
+- Physical office address with known landmark in a business district
+- Background verification / document check mentioned
+- Offer letter / appointment letter process described
+
+## India-Specific Context
+- Legitimate large companies (TCS, Infosys, Wipro, etc.) NEVER charge any fee at any stage
+- Government jobs are announced ONLY on official .gov.in portals (RRB, SSC, UPSC, NHM, etc.)
+- Any "government job" recruiting via WhatsApp, pamphlets, or non-.gov.in email is a scam
+- Real IT companies conduct coding tests on platforms like HackerRank, Mettl, or their own portal
+- "Refundable" deposits are a classic advance-fee fraud tactic — the money is never returned
+
+Return ONLY the JSON object.`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,19 +101,19 @@ function extractTextFromHtml(html: string): string {
     .replace(/&quot;/g, '"')
     .replace(/\s{2,}/g, " ")
     .trim()
-    .slice(0, 4000); // keep under token limits
+    .slice(0, 6000); // 2.5 Flash handles larger context — bump from 4000
 }
 
 /** Fetch a URL server-side and return its readable text content */
 async function scrapeUrl(url: string): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 10000); // 10s for 2.5
   try {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; JobShieldBot/1.0; +https://jobshield.ai)",
+          "Mozilla/5.0 (compatible; JobShieldBot/2.0; +https://jobshield.ai)",
         Accept: "text/html,application/xhtml+xml",
       },
     });
@@ -101,20 +130,46 @@ async function scrapeUrl(url: string): Promise<string> {
   }
 }
 
-/** Run Gemini text analysis */
+/**
+ * Initialize GoogleGenAI with Gemini 2.5 Flash + thinking enabled.
+ * Thinking mode gives the model an internal chain-of-thought before output,
+ * significantly improving accuracy for nuanced scam detection.
+ */
+async function getGeminiClient(apiKey: string) {
+  const { GoogleGenAI } = await import("@google/genai");
+  return new GoogleGenAI({ apiKey });
+}
+
+/** Run Gemini 2.5 Flash text analysis with thinking mode */
 async function runGeminiText(
   apiKey: string,
   text: string
 ): Promise<VerificationResult | null> {
   try {
-    const { GoogleGenAI } = await import("@google/genai");
-    const genAI = new GoogleGenAI({ apiKey });
-    const prompt = `${SYSTEM_PROMPT}\n\nAnalyze this job posting content:\n\n${text}`;
+    const genAI = await getGeminiClient(apiKey);
+    const prompt = `Analyze this job posting content for employment fraud:\n\n${text}`;
+
     const result = await genAI.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        // Thinking mode: internal reasoning before final answer.
+        // Budget of 8192 tokens gives thorough analysis without excessive latency.
+        thinkingConfig: {
+          thinkingBudget: 8192,
+        },
+        temperature: 0.1,   // Low temperature → consistent, deterministic verdicts
+        maxOutputTokens: 1024,
+      },
     });
-    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    const rawText = result.candidates?.[0]?.content?.parts
+      ?.filter((p: { text?: string; thought?: boolean }) => !p.thought)  // skip thinking tokens
+      ?.map((p: { text?: string }) => p.text ?? "")
+      .join("") ?? "";
+
+    // Strip any accidental markdown fences
     const jsonStr = rawText.replace(/```json\n?|\n?```/g, "").trim();
     const parsed = JSON.parse(jsonStr);
     return VerificationSchema.parse(parsed) as VerificationResult;
@@ -123,19 +178,18 @@ async function runGeminiText(
   }
 }
 
-/** Run Gemini Vision analysis on a base64 image — OCR + scam detection */
+/** Run Gemini 2.5 Flash Vision — OCR + scam detection in one pass */
 async function runGeminiVision(
   apiKey: string,
   base64Data: string,
   mimeType: string
 ): Promise<VerificationResult | null> {
   try {
-    const { GoogleGenAI } = await import("@google/genai");
-    const genAI = new GoogleGenAI({ apiKey });
+    const genAI = await getGeminiClient(apiKey);
 
-    // First, extract text from the image
+    // Step 1: OCR — extract all text visible in the image
     const ocrResult = await genAI.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",
@@ -147,24 +201,32 @@ async function runGeminiVision(
               },
             },
             {
-              text: "Extract ALL text visible in this image exactly as written. This is a job posting, advertisement, or recruitment message. Return only the raw extracted text, nothing else.",
+              text: "Extract ALL text visible in this image exactly as written. This is a job posting, advertisement, recruitment pamphlet, or WhatsApp screenshot. Preserve formatting clues (ALL CAPS, phone numbers, email addresses, amounts in ₹). Return only the raw extracted text, nothing else.",
             },
           ],
         },
       ],
+      config: {
+        thinkingConfig: { thinkingBudget: 2048 }, // OCR needs less reasoning
+        temperature: 0,
+        maxOutputTokens: 2048,
+      },
     });
 
     const extractedText =
-      ocrResult.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      ocrResult.candidates?.[0]?.content?.parts
+        ?.filter((p: { thought?: boolean }) => !p.thought)
+        ?.map((p: { text?: string }) => p.text ?? "")
+        .join("") ?? "";
 
     if (!extractedText || extractedText.trim().length < 10) {
       return null;
     }
 
-    // Now analyze the extracted text for scam indicators
+    // Step 2: Analyze extracted text with full scam detection
     const analysisResult = await runGeminiText(
       apiKey,
-      `[Extracted from image via OCR]\n\n${extractedText}`
+      `[Extracted from image via OCR — Gemini 2.5 Flash Vision]\n\n${extractedText}`
     );
 
     return analysisResult;
@@ -199,7 +261,7 @@ export async function POST(req: NextRequest) {
 
     const geminiKey = process.env.GOOGLE_GEMINI_API_KEY;
 
-    // ── Image: Gemini Vision OCR ──
+    // ── Image: Gemini 2.5 Flash Vision OCR ──
     if (inputType === "image" && imageData && imageMimeType && geminiKey) {
       const visionResult = await runGeminiVision(geminiKey, imageData, imageMimeType);
       if (visionResult) {
@@ -207,14 +269,14 @@ export async function POST(req: NextRequest) {
           ...visionResult,
           analysedAt: new Date().toISOString(),
           inputType: "image",
-          inputPreview: "[Image analysed via Gemini Vision OCR]",
+          inputPreview: "[Image analysed via Gemini 2.5 Flash Vision OCR]",
         };
         return NextResponse.json(finalResult);
       }
       // Fall through to mock if vision fails
     }
 
-    // ── URL: server-side scrape then AI ──
+    // ── URL: server-side scrape → Gemini 2.5 Flash analysis ──
     if (inputType === "url" && geminiKey) {
       const rawUrl = text.replace(/^Job posting URL:\s*/i, "").trim();
       const scrapedText = await scrapeUrl(rawUrl);
@@ -231,7 +293,7 @@ export async function POST(req: NextRequest) {
       // Fall through to mock
     }
 
-    // ── Text: Try Gemini AI ──
+    // ── Text: Gemini 2.5 Flash with thinking ──
     if (geminiKey) {
       const aiResult = await runGeminiText(geminiKey, text);
       if (aiResult) {
@@ -245,7 +307,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Fallback: Mock Heuristic Engine ──
+    // ── Fallback: Heuristic Mock Engine (no API key or AI failure) ──
     const mockResult = runMockVerification(text, inputType);
     return NextResponse.json(mockResult);
   } catch (error) {

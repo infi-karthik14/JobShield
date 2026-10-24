@@ -100,6 +100,13 @@ export default function InputPanel({ onResult, isLoading, setIsLoading }: InputP
         setError("Please enter a URL to analyze.");
         return;
       }
+      // BUG-04 fix: validate URL format before submitting
+      try {
+        new URL(urlInput.trim());
+      } catch {
+        setError("Please enter a valid URL starting with http:// or https://");
+        return;
+      }
       textToAnalyze = urlInput.trim();
       inputType = "url";
     } else if (activeTab === "image") {
@@ -424,11 +431,8 @@ Example:
         )}
       </button>
 
+      {/* BUG-02 fix: @keyframes spin lives in globals.css — removed duplicate inline style */}
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
         @media (max-width: 480px) {
           .tab-label { display: none; }
         }
